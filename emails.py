@@ -1,14 +1,40 @@
+import os
 import smtplib
-import pandas as pd
 from email.message import EmailMessage
-import os # Import the os module to check file existence
+
+import pandas as pd
+
+
+def load_env_file(env_path):
+    """Load simple KEY=VALUE pairs from a .env file into os.environ."""
+    if not os.path.exists(env_path):
+        return
+
+    with open(env_path, "r", encoding="utf-8") as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
+load_env_file(os.path.join(os.path.dirname(__file__), ".env"))
 
 # === CONFIGURATION ===
-# Your Gmail address
-YOUR_EMAIL = "thushanmadu2003@gmail.com"
-# Your Gmail app password (NOT your regular Gmail password)
-# You need to generate an app password in your Google Account security settings.
-APP_PASSWORD = "Wzxwkuiwwwveoolo"
+YOUR_EMAIL = os.environ.get("YOUR_EMAIL", "")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
+if not YOUR_EMAIL or not APP_PASSWORD:
+    raise ValueError(
+         "Missing YOUR_EMAIL or APP_PASSWORD environment variables. "
+         "Set them in the process environment or in the local .env file."
+    )
+
 # Filename of your CV (must be in the same directory as the script, or provide full path)
 CV_FILE = "Thushan_Madarasinghe.pdf"
 # Filename of your Excel file with emails (must be in the same directory as the script, or provide full path)
@@ -57,7 +83,7 @@ HTML_BODY = f"""
 
     <p><strong>Thushan Madarasinghe</strong><br>
     +94 70 392 1791<br>
-    <a href="mailto:thushanmadu2003@gmail.com">thushanmadu2003@gmail.com</a><br>
+    <a href="mailto:{YOUR_EMAIL}">{YOUR_EMAIL}</a><br>
     <a href="https://github.com/ThushanMadu">GitHub</a> |
     <a href="https://thushanmadu.me">Portfolio</a> |
     <a href="https://linkedin.com/in/thushan-madarasinghe-420810222">LinkedIn</a>
