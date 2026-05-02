@@ -56,7 +56,7 @@ APP_PASSWORD=your16characterapppassword
 Place these files in the project root:
 
 - **Excel file** (`test.xlsx`): Must contain a column named exactly `"Email Address"`
-- **PDF attachment** (`Thushan_Madarasinghe.pdf`): Your CV/resume to attach to emails
+- **Your CV**: Add your CV/resume as a PDF file and update the `CV_FILE` variable in `emails.py` with the filename
 
 ## Usage
 
@@ -78,7 +78,7 @@ Edit these variables in `emails.py` to customize:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CV_FILE` | Path to your CV PDF | `Thushan_Madarasinghe.pdf` |
+| `CV_FILE` | Path to your CV PDF | `your_cv.pdf` |
 | `EXCEL_FILE` | Path to your email list | `test.xlsx` |
 | `SUBJECT` | Email subject line | Internship inquiry subject |
 | `HTML_BODY` | Email content (HTML) | Cover letter template |
@@ -100,7 +100,7 @@ The script automatically adds a `Status` column to track sent emails.
 automated_emailSend_script/
 ├── emails.py                    # Main script
 ├── test.xlsx                    # Recipient email list
-├── Thushan_Madarasinghe.pdf     # CV attachment
+├── your_cv.pdf                  # Your CV attachment (add yours)
 ├── .env                         # Credentials (create this)
 ├── .gitignore
 └── README.md
