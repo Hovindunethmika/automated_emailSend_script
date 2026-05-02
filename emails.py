@@ -30,7 +30,10 @@ YOUR_EMAIL = os.environ.get("YOUR_EMAIL", "")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 
 if not YOUR_EMAIL or not APP_PASSWORD:
-    raise ValueError("Missing YOUR_EMAIL or APP_PASSWORD in the .env file.")
+    raise ValueError(
+         "Missing YOUR_EMAIL or APP_PASSWORD environment variables. "
+         "Set them in the process environment or in the local .env file."
+    )
 
 # Filename of your CV (must be in the same directory as the script, or provide full path)
 CV_FILE = "Thushan_Madarasinghe.pdf"
