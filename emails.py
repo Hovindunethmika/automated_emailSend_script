@@ -1,55 +1,125 @@
+"""
+Automated email sender that reads recipient addresses from an Excel file
+and sends a personalised HTML email with a CV attachment to each one.
+"""
+
+import logging
+import os
+import re
 import smtplib
-import pandas as pd
+import time
+from dataclasses import dataclass
 from email.message import EmailMessage
-import os # Import the os module to check file existence
+from typing import Optional
 
-# === CONFIGURATION ===
-# Your Gmail address
-YOUR_EMAIL = "thushanmadu2003@gmail.com"
-# Your Gmail app password (NOT your regular Gmail password)
-# You need to generate an app password in your Google Account security settings.
-APP_PASSWORD = "Wzxwkuiwwwveoolo"
-# Filename of your CV (must be in the same directory as the script, or provide full path)
-CV_FILE = "Thushan_Madarasinghe.pdf"
-# Filename of your Excel file with emails (must be in the same directory as the script, or provide full path)
-# Ensure the column containing emails is named exactly "Email Address" or update the script accordingly.
-EXCEL_FILE = "test.xlsx"
-# Filename of your Cover Letter (This variable is no longer used for attachment,
-# but kept here for reference if you want to include the text in the body)
-# COVER_LETTER_FILE = "Thushan_Madarasinghe_coverLetter.pdf" # Commented out as it's not attached
+import pandas as pd
+from dotenv import load_dotenv
 
-# --- Email Content ---
-# Subject line for the email
-SUBJECT = " Inquiry Regarding Internship Opportunities – Computer Science Undergraduate"
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
-# HTML body of the email
-# This includes the humanized cover letter text you refined earlier.
-HTML_BODY = f"""
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+EMAIL_COLUMN = "Email Address"
+STATUS_SENT = "Sent"
+STATUS_FAILED = "Failed"
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 465
+SEND_DELAY_SECONDS = 2          # Pause between sends to avoid rate-limiting
+EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+@dataclass
+class Config:
+    """All runtime settings loaded from the environment / .env file."""
+    your_email: str
+    app_password: str
+    cv_file: str
+    excel_file: str
+    subject: str
+
+    @classmethod
+    def from_env(cls) -> "Config":
+        """Load and validate configuration from environment variables."""
+        load_dotenv()
+
+        your_email = os.getenv("YOUR_EMAIL", "")
+        app_password = os.getenv("APP_PASSWORD", "")
+
+        if not your_email or not app_password:
+            raise ValueError(
+                "YOUR_EMAIL and APP_PASSWORD must be set in the .env file."
+            )
+
+        return cls(
+            your_email=your_email,
+            app_password=app_password,
+            cv_file=os.getenv("CV_FILE", "CV.pdf"),
+            excel_file=os.getenv("EXCEL_FILE", "emails.xlsx"),
+            subject=os.getenv(
+                "SUBJECT",
+                "Inquiry Regarding Internship Opportunities – Computer Science Undergraduate",
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Email content
+# ---------------------------------------------------------------------------
+HTML_BODY = """
 <html>
   <body style="font-family: Arial, sans-serif; line-height: 1.6;">
     <p>Dear Sir/Madam,</p>
 
     <p>Hope you're having a good week.</p>
 
-    <p>My name is Thushan Madarasinghe, a Computer Science undergraduate at the Informatics Institute of Technology (IIT), affiliated with the University of Westminster. I'm writing to express my strong interest in an internship opportunity with your esteemed organization.</p>
+    <p>My name is Thushan Madarasinghe, a Computer Science undergraduate at the
+    Informatics Institute of Technology (IIT), affiliated with the University of
+    Westminster. I'm writing to express my strong interest in an internship
+    opportunity with your esteemed organization.</p>
 
-    <p>I'm genuinely impressed by your company's commitment to excellence and nurturing new talent. I'm eager to contribute to the impactful work you're doing, which feels like a fantastic next step for me.</p>
+    <p>I'm genuinely impressed by your company's commitment to excellence and
+    nurturing new talent. I'm eager to contribute to the impactful work you're
+    doing, which feels like a fantastic next step for me.</p>
 
-    <p>My studies have provided a solid foundation in Object-Oriented Programming, Algorithms, and Data Structures. I'm proficient in technologies including Java, React Native, Node.js, Express.js, React, MongoDB, SQL, and HTML/CSS, and I'm comfortable with Git for version control. I also have a good understanding of backend development, including APIs and database management.</p>
+    <p>My studies have provided a solid foundation in Object-Oriented Programming,
+    Algorithms, and Data Structures. I'm proficient in technologies including Java,
+    React Native, Node.js, Express.js, React, MongoDB, SQL, and HTML/CSS, and I'm
+    comfortable with Git for version control. I also have a good understanding of
+    backend development, including APIs and database management.</p>
 
-    <p>I enjoy tackling new technologies and figuring things out across the full stack, bringing different components together to build functional solutions.</p>
+    <p>I enjoy tackling new technologies and figuring things out across the full
+    stack, bringing different components together to build functional solutions.</p>
 
     <p>Key projects I've worked on include:</p>
     <ul>
-      <li><strong>GoviShakthi:</strong> An AI-powered MERN stack app with LLM integration for product recommendations.</li>
-      <li><strong>FinTrack:</strong> A personal finance tracker built with the MERN stack.</li>
-      <li><strong>Real-Time Ticketing System:</strong> Developed using Node.js, React.js, and WebSockets.</li>
+      <li><strong>GoviShakthi:</strong> An AI-powered MERN stack app with LLM
+          integration for product recommendations.</li>
+      <li><strong>FinTrack:</strong> A personal finance tracker built with the
+          MERN stack.</li>
+      <li><strong>Real-Time Ticketing System:</strong> Developed using Node.js,
+          React.js, and WebSockets.</li>
       <li><strong>Plane Management System:</strong> A project built using Java.</li>
     </ul>
 
-    <p>My involvement with the IEEE Computer Society at university has also enhanced my communication, organization, and teamwork skills through various events.</p>
+    <p>My involvement with the IEEE Computer Society at university has also enhanced
+    my communication, organization, and teamwork skills through various events.</p>
 
-    <p>I'm eager to bring my energy, technical skills, and passion for learning to your team. Please find my CV attached for your review. I would be grateful for the chance to discuss how I could contribute. If there aren't any suitable openings right now, I'd be thankful if you'd keep my application in mind and let me know about any future opportunities that might come up.</p>
+    <p>I'm eager to bring my energy, technical skills, and passion for learning to
+    your team. Please find my CV attached for your review. I would be grateful for
+    the chance to discuss how I could contribute. If there aren't any suitable
+    openings right now, I'd be thankful if you'd keep my application in mind and
+    let me know about any future opportunities that might come up.</p>
 
     <p>Thank you for your time and consideration.</p>
 
@@ -66,83 +136,153 @@ HTML_BODY = f"""
 </html>
 """
 
-# --- Function to send a single email ---
-def send_email(to_email):
-    """Sends an email to a single recipient."""
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def is_valid_email(address: str) -> bool:
+    """Return True if *address* looks like a well-formed email address."""
+    return bool(EMAIL_REGEX.match(address))
+
+
+def build_message(cfg: Config, to_email: str) -> Optional[EmailMessage]:
+    """
+    Construct and return an EmailMessage ready to send.
+
+    Returns None if the CV attachment file cannot be found.
+    """
+    if not os.path.exists(cfg.cv_file):
+        logger.error("CV file not found: %s", cfg.cv_file)
+        return None
+
     msg = EmailMessage()
-    msg['Subject'] = SUBJECT
-    msg['From'] = YOUR_EMAIL
-    msg['To'] = to_email
+    msg["Subject"] = cfg.subject
+    msg["From"] = cfg.your_email
+    msg["To"] = to_email
+    msg.add_alternative(HTML_BODY, subtype="html")
 
-    # Add the HTML body
-    msg.add_alternative(HTML_BODY, subtype='html')
+    with open(cfg.cv_file, "rb") as fh:
+        msg.add_attachment(
+            fh.read(),
+            maintype="application",
+            subtype="pdf",
+            filename=os.path.basename(cfg.cv_file),
+        )
 
-    # Attach CV file
-    if not os.path.exists(CV_FILE):
-        print(f"Error: CV file not found at {CV_FILE}")
-        return False # Indicate failure
-    with open(CV_FILE, 'rb') as f:
-        msg.add_attachment(f.read(), maintype='application', subtype='pdf', filename=os.path.basename(CV_FILE))
+    return msg
 
-    # Send the message using SMTP
+
+def send_email(cfg: Config, to_email: str) -> bool:
+    """
+    Send a single email to *to_email*.
+
+    Returns True on success, False on any failure.
+    """
+    msg = build_message(cfg, to_email)
+    if msg is None:
+        return False
+
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(YOUR_EMAIL, APP_PASSWORD)
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
+            smtp.login(cfg.your_email, cfg.app_password)
             smtp.send_message(msg)
-        return True # Indicate success
-    except Exception as e:
-        print(f"SMTP Error: {e}")
-        return False # Indicate failure
+        return True
+    except smtplib.SMTPAuthenticationError:
+        logger.error("Authentication failed. Check YOUR_EMAIL and APP_PASSWORD.")
+        return False
+    except smtplib.SMTPException as exc:
+        logger.error("SMTP error sending to %s: %s", to_email, exc)
+        return False
 
 
-# === Main execution block ===
+def load_recipients(excel_file: str) -> pd.DataFrame:
+    """
+    Load the recipients DataFrame from *excel_file*.
+
+    Raises FileNotFoundError or ValueError on problems.
+    """
+    if not os.path.exists(excel_file):
+        raise FileNotFoundError(f"Excel file not found: {excel_file}")
+
+    data = pd.read_excel(excel_file)
+
+    if EMAIL_COLUMN not in data.columns:
+        raise ValueError(
+            f"Column '{EMAIL_COLUMN}' not found in {excel_file}. "
+            "Please check the column name."
+        )
+
+    if "Status" not in data.columns:
+        data["Status"] = ""
+
+    return data
+
+
+def save_recipients(data: pd.DataFrame, excel_file: str) -> None:
+    """Persist the updated *data* back to *excel_file*."""
+    data.to_excel(excel_file, index=False)
+    logger.info("Updated status saved to %s", excel_file)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main() -> None:
+    """Entry point: load config, iterate recipients, send emails."""
+    cfg = Config.from_env()
+
+    try:
+        data = load_recipients(cfg.excel_file)
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("%s", exc)
+        return
+
+    logger.info("Loaded %d rows from %s", len(data), cfg.excel_file)
+
+    sent = skipped = failed = 0
+
+    for index, row in data.iterrows():
+        raw_email = row[EMAIL_COLUMN]
+
+        # Skip blank cells
+        if pd.isna(raw_email) or str(raw_email).strip() == "":
+            logger.debug("Row %d: empty email — skipping.", index)
+            skipped += 1
+            continue
+
+        address = str(raw_email).strip()
+
+        # Skip already-processed rows
+        if row["Status"] in (STATUS_SENT, STATUS_FAILED):
+            logger.info("Row %d (%s): already '%s' — skipping.", index, address, row["Status"])
+            skipped += 1
+            continue
+
+        # Validate format
+        if not is_valid_email(address):
+            logger.warning("Row %d: '%s' is not a valid email address — skipping.", index, address)
+            skipped += 1
+            continue
+
+        logger.info("Sending to: %s", address)
+        if send_email(cfg, address):
+            logger.info("✅  Sent successfully to %s", address)
+            data.loc[index, "Status"] = STATUS_SENT
+            sent += 1
+        else:
+            logger.error("❌  Failed to send to %s", address)
+            data.loc[index, "Status"] = STATUS_FAILED
+            failed += 1
+
+        time.sleep(SEND_DELAY_SECONDS)
+
+    try:
+        save_recipients(data, cfg.excel_file)
+    except OSError as exc:
+        logger.error("Could not save Excel file: %s", exc)
+
+    logger.info("Done — sent: %d | failed: %d | skipped: %d", sent, failed, skipped)
+
+
 if __name__ == "__main__":
-    # Check if Excel file exists
-    if not os.path.exists(EXCEL_FILE):
-        print(f"Error: Excel file not found at {EXCEL_FILE}")
-    else:
-        # Load emails from Excel
-        try:
-            data = pd.read_excel(EXCEL_FILE)
-
-            # Add a 'Status' column if it doesn't exist
-            if 'Status' not in data.columns:
-                data['Status'] = '' # Initialize with empty strings
-
-            # Check if the "Email Address" column exists
-            if "Email Address" not in data.columns:
-                print(f"Error: Column 'Email Address' not found in {EXCEL_FILE}. Please check the column name.")
-            else:
-                print(f"Loaded {len(data)} rows from {EXCEL_FILE}")
-                # Iterate through each row (each email address)
-                for index, row in data.iterrows():
-                    email = row["Email Address"] # Get email from the specified column
-                    # Only attempt to send if the email is not empty and status is not already 'Sent' or 'Failed'
-                    if pd.notna(email) and str(email).strip() != "" and row['Status'] not in ['Sent', 'Failed']:
-                        email_str = str(email).strip() # Ensure email is a string and strip whitespace
-                        print(f"Attempting to send to: {email_str}")
-                        if send_email(email_str):
-                            print(f"✅ Sent successfully to {email_str}")
-                            data.loc[index, 'Status'] = 'Sent' # Update status in DataFrame
-                        else:
-                            print(f"❌ Failed to send to {email_str}")
-                            data.loc[index, 'Status'] = 'Failed' # Update status in DataFrame
-                    elif pd.notna(email) and str(email).strip() != "":
-                         print(f"Skipping row {index} ({email}): Status already '{row['Status']}'.")
-                    else:
-                        print(f"Skipping row {index}: No valid email address found.")
-
-                # Save the updated DataFrame back to the Excel file
-                try:
-                    data.to_excel(EXCEL_FILE, index=False) # index=False prevents writing the DataFrame index as a column
-                    print(f"Updated status in {EXCEL_FILE}")
-                except Exception as e:
-                    print(f"Error saving updated Excel file: {e}")
-
-
-        except FileNotFoundError:
-             # This case is already handled by os.path.exists, but good to have
-            print(f"Error: Excel file not found at {EXCEL_FILE}")
-        except Exception as e:
-            print(f"An error occurred while processing the Excel file: {e}")
-
+    main()
